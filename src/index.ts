@@ -16,29 +16,8 @@ import { checkSetup } from "./tools/setup.js";
 import { diagnoseLogins } from "./tools/diagnose.js";
 import type { Job } from "./types.js";
 
-function toTable(jobs: Job[]): string {
-  if (jobs.length === 0) return "No jobs found.";
-
-  const rows = jobs.map((j, i) => [
-    String(i + 1),
-    j.title,
-    j.company,
-    j.location || "—",
-    j.posted || "—",
-    j.source,
-    j.url,
-  ]);
-
-  const headers = ["#", "Title", "Company", "Location", "Posted", "Source", "URL"];
-  const widths = headers.map((h, i) =>
-    Math.max(h.length, ...rows.map((r) => r[i].length))
-  );
-
-  const line = (cols: string[]) =>
-    "| " + cols.map((c, i) => c.padEnd(widths[i])).join(" | ") + " |";
-  const divider = "| " + widths.map((w) => "-".repeat(w)).join(" | ") + " |";
-
-  return [line(headers), divider, ...rows.map(line)].join("\n");
+function toJSON(jobs: Job[], sources?: Record<string, number | string>): string {
+  return JSON.stringify({ total: jobs.length, ...(sources && { sources }), jobs }, null, 2);
 }
 
 const SETUP_INSTRUCTIONS = `
@@ -271,14 +250,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           };
         }
 
-        const summary = Object.entries(sources)
-          .map(([board, count]) => `${board}: ${count}`)
-          .join(" | ");
-
         return {
           content: [{
             type: "text",
-            text: `**Total: ${allJobs.length} jobs** (${summary})\n\n${toTable(allJobs)}`,
+            text: toJSON(allJobs, sources),
           }],
         };
       } finally {
@@ -299,7 +274,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     return {
       content: [{
         type: "text",
-        text: `**Total: ${jobs.length} jobs**\n\n${toTable(jobs)}`,
+        text: toJSON(jobs),
       }],
     };
   } catch (err) {

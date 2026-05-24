@@ -11,32 +11,49 @@ export async function scrapeIndeed(page: Page, role: string, location = "", limi
     const params = new URLSearchParams({
       q: role,
       fromage: String(Math.max(1, Math.ceil(hours / 24))),
-      sort: "date",           // return all jobs by date, not relevance ranking
+      sort: "date",
       start: String(pageIndex * PAGE_SIZE),
     });
     if (location) params.set("l", location);
 
     await page.goto(`https://www.indeed.com/jobs?${params}`, {
-      waitUntil: "domcontentloaded",
-      timeout: 30000,
+      waitUntil: "networkidle",
+      timeout: 45000,
     });
 
-    await page.waitForSelector("div.job_seen_beacon, div[data-jk]", {
-      timeout: 15000,
-    }).catch(() => null);
+    // Dismiss cookie/consent banner
+    await page.locator("button#onetrust-accept-btn-handler, button[id*='accept']")
+      .first().click({ timeout: 3000 }).catch(() => null);
+
+    // Scroll to trigger lazy-loaded cards
+    await page.evaluate(() => window.scrollBy(0, 600));
+    await page.waitForTimeout(1500);
 
     const batch = await page.evaluate(() => {
-      return Array.from(
-        document.querySelectorAll("div.job_seen_beacon, div[data-jk]")
-      ).map((card) => {
-        const anchor = card.querySelector("h2.jobTitle a, a[data-jk]") as HTMLAnchorElement;
+      // Try multiple selector patterns — Indeed redesigns frequently
+      const selectors = [
+        "div.job_seen_beacon",
+        "div[data-jk]",
+        "li.css-5lfssm",
+        "div.resultContent",
+        "td.resultContent",
+      ];
+
+      let cards: Element[] = [];
+      for (const sel of selectors) {
+        cards = Array.from(document.querySelectorAll(sel));
+        if (cards.length > 0) break;
+      }
+
+      return cards.map((card) => {
+        const anchor = card.querySelector("a[data-jk], h2 a, a[id^='job_']") as HTMLAnchorElement;
         const href = anchor?.href ?? "";
         return {
-          title: card.querySelector("h2.jobTitle span, h2.jobTitle")?.textContent?.trim() ?? "",
-          company: card.querySelector(".companyName, [data-testid='company-name']")?.textContent?.trim() ?? "",
-          location: card.querySelector(".companyLocation, [data-testid='text-location']")?.textContent?.trim() ?? "",
+          title: card.querySelector("h2 span[title], h2 a span, .jobTitle span")?.textContent?.trim() ?? "",
+          company: card.querySelector("[data-testid='company-name'], .companyName, span.css-92r8pb")?.textContent?.trim() ?? "",
+          location: card.querySelector("[data-testid='text-location'], .companyLocation, div.css-1restlb")?.textContent?.trim() ?? "",
           url: href.startsWith("http") ? href : `https://www.indeed.com${href}`,
-          posted: card.querySelector(".date, .result-footer-item time")?.textContent?.trim() ?? "",
+          posted: card.querySelector(".date, [data-testid='myJobsStateDate']")?.textContent?.trim() ?? "",
           source: "Indeed",
         };
       }).filter((j) => j.title && j.url);

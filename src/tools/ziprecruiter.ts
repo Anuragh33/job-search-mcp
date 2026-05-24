@@ -9,32 +9,42 @@ export async function scrapeZipRecruiter(page: Page, role: string, location = ""
     const params = new URLSearchParams({
       search: role,
       days: String(Math.max(1, Math.ceil(hours / 24))),
-      sort_by: "date",        // all jobs by date, not relevance
+      sort_by: "date",
       page: String(pageNum),
     });
     if (location) params.set("location", location);
 
     await page.goto(`https://www.ziprecruiter.com/jobs-search?${params}`, {
-      waitUntil: "domcontentloaded",
-      timeout: 30000,
+      waitUntil: "networkidle",
+      timeout: 45000,
     });
 
-    await page.waitForSelector(
-      "article.job_result, div[data-testid='job-card'], .jobList-item",
-      { timeout: 15000 }
-    ).catch(() => null);
+    await page.evaluate(() => window.scrollBy(0, 600));
+    await page.waitForTimeout(1500);
 
     const batch = await page.evaluate(() => {
-      return Array.from(
-        document.querySelectorAll("article.job_result, div[data-testid='job-card'], .jobList-item")
-      ).map((card) => {
-        const anchor = card.querySelector("a.job_link, a[data-testid='job-title-link'], h2 a") as HTMLAnchorElement;
+      const selectors = [
+        "article.job_result",
+        "div[data-testid='job-card']",
+        ".jobList-item",
+        "div[class*='job_content']",
+        "li[class*='job-listing']",
+      ];
+
+      let cards: Element[] = [];
+      for (const sel of selectors) {
+        cards = Array.from(document.querySelectorAll(sel));
+        if (cards.length > 0) break;
+      }
+
+      return cards.map((card) => {
+        const anchor = card.querySelector("a[data-testid='job-title-link'], a.job_link, h2 a, a[href*='/jobs/']") as HTMLAnchorElement;
         return {
-          title: (card.querySelector(".job_title, [data-testid='job-title'], h2 a") as HTMLElement)?.textContent?.trim() ?? "",
-          company: (card.querySelector(".hiring_company_text, [data-testid='company-name'], .company_name") as HTMLElement)?.textContent?.trim() ?? "",
-          location: (card.querySelector(".location_text, [data-testid='location'], .job_location") as HTMLElement)?.textContent?.trim() ?? "",
+          title: (card.querySelector("[data-testid='job-title'], .job_title, h2") as HTMLElement)?.textContent?.trim() ?? "",
+          company: (card.querySelector("[data-testid='company-name'], .hiring_company_text, .company_name") as HTMLElement)?.textContent?.trim() ?? "",
+          location: (card.querySelector("[data-testid='location'], .location_text, .job_location") as HTMLElement)?.textContent?.trim() ?? "",
           url: anchor?.href ?? "",
-          posted: (card.querySelector(".posted_time, time") as HTMLElement)?.textContent?.trim() ?? "",
+          posted: (card.querySelector("time, .posted_time, [data-testid='posted-date']") as HTMLElement)?.textContent?.trim() ?? "",
           source: "ZipRecruiter",
         };
       }).filter((j) => j.title && j.url);

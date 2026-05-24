@@ -1,67 +1,68 @@
-import { Page } from "playwright";
 import type { Job } from "../types.js";
 
-const PAGE_SIZE = 15;
-
-export async function scrapeIndeed(page: Page, role: string, location = "", limit = 25, hours = 24): Promise<Job[]> {
+export async function scrapeIndeed(
+  _page: unknown,
+  role: string,
+  location = "United States",
+  limit = 100,
+  hours = 24
+): Promise<Job[]> {
   const jobs: Job[] = [];
-  let pageIndex = 0;
+  let start = 0;
+  const pageSize = 25;
 
   while (jobs.length < limit) {
     const params = new URLSearchParams({
       q: role,
-      fromage: String(Math.max(1, Math.ceil(hours / 24))),
+      l: location,
       sort: "date",
-      start: String(pageIndex * PAGE_SIZE),
+      fromage: String(Math.max(1, Math.ceil(hours / 24))),
+      start: String(start),
     });
-    params.set("l", location || "United States");
 
-    await page.goto(`https://www.indeed.com/jobs?${params}`, {
-      waitUntil: "domcontentloaded",
-      timeout: 45000,
+    const res = await fetch(`https://www.indeed.com/rss?${params}`, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; RSS reader)" },
     });
-    await page.waitForTimeout(3000);
 
-    await page.locator("button#onetrust-accept-btn-handler, button[id*='accept']")
-      .first().click({ timeout: 2000 }).catch(() => null);
+    if (!res.ok) break;
+    const xml = await res.text();
+    const items = xml.match(/<item>([\s\S]*?)<\/item>/g) ?? [];
+    if (items.length === 0) break;
 
-    await page.evaluate(() => window.scrollBy(0, 600));
-    await page.waitForTimeout(1000);
+    for (const item of items) {
+      const title = extractCDATA(item, "title");
+      const url   = extract(item, "link") || extractCDATA(item, "guid");
+      const desc  = extractCDATA(item, "description");
+      const date  = extract(item, "pubDate");
 
-    const batch = await page.evaluate(() => {
-      // Try multiple selector patterns — Indeed redesigns frequently
-      const selectors = [
-        "div.job_seen_beacon",
-        "div[data-jk]",
-        "li.css-5lfssm",
-        "div.resultContent",
-        "td.resultContent",
-      ];
+      // Indeed title format: "Job Title - Company Name"
+      const dashIdx = title.lastIndexOf(" - ");
+      const jobTitle = dashIdx > 0 ? title.slice(0, dashIdx).trim() : title;
+      const company  = dashIdx > 0 ? title.slice(dashIdx + 3).trim() : "";
 
-      let cards: Element[] = [];
-      for (const sel of selectors) {
-        cards = Array.from(document.querySelectorAll(sel));
-        if (cards.length > 0) break;
+      // Location is buried in description HTML — pull it out
+      const locMatch = desc.match(/location.*?<b>(.*?)<\/b>/i) ||
+                       desc.match(/<span[^>]*>([^<]+,\s*[A-Z]{2}[^<]*)<\/span>/);
+      const location_ = locMatch?.[1]?.trim() ?? "";
+
+      if (jobTitle && url) {
+        jobs.push({ title: jobTitle, company, location: location_, url, posted: date, source: "Indeed" });
       }
+    }
 
-      return cards.map((card) => {
-        const anchor = card.querySelector("a[data-jk], h2 a, a[id^='job_']") as HTMLAnchorElement;
-        const href = anchor?.href ?? "";
-        return {
-          title: card.querySelector("h2 span[title], h2 a span, .jobTitle span")?.textContent?.trim() ?? "",
-          company: card.querySelector("[data-testid='company-name'], .companyName, span.css-92r8pb")?.textContent?.trim() ?? "",
-          location: card.querySelector("[data-testid='text-location'], .companyLocation, div.css-1restlb")?.textContent?.trim() ?? "",
-          url: href.startsWith("http") ? href : `https://www.indeed.com${href}`,
-          posted: card.querySelector(".date, [data-testid='myJobsStateDate']")?.textContent?.trim() ?? "",
-          source: "Indeed",
-        };
-      }).filter((j) => j.title && j.url);
-    });
-
-    if (batch.length === 0) break;
-    jobs.push(...batch);
-    pageIndex++;
+    if (items.length < pageSize) break;
+    start += pageSize;
   }
 
   return jobs.slice(0, limit);
+}
+
+function extractCDATA(xml: string, tag: string): string {
+  const m = xml.match(new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>|([\\s\\S]*?))<\\/${tag}>`));
+  return (m?.[1] ?? m?.[2] ?? "").trim();
+}
+
+function extract(xml: string, tag: string): string {
+  const m = xml.match(new RegExp(`<${tag}[^>]*/?>([\\s\\S]*?)<\\/${tag}>`));
+  return (m?.[1] ?? "").trim();
 }

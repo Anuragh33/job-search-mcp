@@ -229,14 +229,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (name === "search_and_export") {
       const context = await launchContext();
       try {
-        const [p1, p2, p3, p4] = await Promise.all([
-          context.newPage(), context.newPage(),
+        const [p1, p4] = await Promise.all([
           context.newPage(), context.newPage(),
         ]);
         const [linkedin, indeed, ziprecruiter, glassdoor] = await Promise.allSettled([
           scrapeLinkedIn(p1, role, location, limit, hours),
-          scrapeIndeed(p2, role, location, limit, hours),
-          scrapeZipRecruiter(p3, role, location, limit, hours),
+          scrapeIndeed(null, role, location, limit, hours),
+          scrapeZipRecruiter(null, role, location, limit, hours),
           scrapeGlassdoor(p4, role, location, limit, hours),
         ]);
         const allJobs: Job[] = [
@@ -286,17 +285,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (name === "search_jobs") {
       const context = await launchContext();
       try {
-        const [p1, p2, p3, p4] = await Promise.all([
-          context.newPage(),
-          context.newPage(),
+        const [p1, p4] = await Promise.all([
           context.newPage(),
           context.newPage(),
         ]);
 
         const [linkedin, indeed, ziprecruiter, glassdoor] = await Promise.allSettled([
           scrapeLinkedIn(p1, role, location, limit, hours),
-          scrapeIndeed(p2, role, location, limit, hours),
-          scrapeZipRecruiter(p3, role, location, limit, hours),
+          scrapeIndeed(null, role, location, limit, hours),      // RSS — no browser needed
+          scrapeZipRecruiter(null, role, location, limit, hours), // RSS — no browser needed
           scrapeGlassdoor(p4, role, location, limit, hours),
         ]);
 

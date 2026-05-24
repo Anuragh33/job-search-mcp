@@ -3,7 +3,7 @@ import { PROFILE_DIR } from "../browser.js";
 
 const BOARDS = [
   { name: "LinkedIn",  loginUrl: "https://www.linkedin.com/login",                    checkUrl: "linkedin.com/feed" },
-  { name: "Glassdoor", loginUrl: "https://www.glassdoor.com/profile/login_input.htm", checkUrl: "glassdoor.com/member" },
+  { name: "Glassdoor", loginUrl: "https://www.glassdoor.com/profile/login_input.htm", checkUrl: "glassdoor.com" },
 ];
 // Indeed and ZipRecruiter use public RSS feeds — no login needed
 

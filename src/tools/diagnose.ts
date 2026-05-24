@@ -2,11 +2,10 @@ import { launchContext, PROFILE_DIR } from "../browser.js";
 import { existsSync } from "fs";
 
 const BOARDS = [
-  { name: "LinkedIn",     url: "https://www.linkedin.com/feed/",         loggedInSignal: "feed" },
-  { name: "Indeed",       url: "https://www.indeed.com/",                loggedInSignal: "indeed.com" },
-  { name: "ZipRecruiter", url: "https://www.ziprecruiter.com/",          loggedInSignal: "ziprecruiter.com" },
-  { name: "Glassdoor",    url: "https://www.glassdoor.com/member/home/", loggedInSignal: "member/home" },
+  { name: "LinkedIn",  url: "https://www.linkedin.com/feed/",        loggedInSignal: "feed" },
+  { name: "Glassdoor", url: "https://www.glassdoor.com/",            loggedInSignal: "glassdoor.com" },
 ];
+// Indeed and ZipRecruiter use RSS feeds — no login check needed
 
 export async function diagnoseLogins(): Promise<string> {
   const lines: string[] = ["# Login Diagnostics\n"];
@@ -50,11 +49,7 @@ export async function diagnoseLogins(): Promise<string> {
     await context.close();
   }
 
-  lines.push("If any board shows NOT logged in:");
-  lines.push("1. Open Google Chrome");
-  lines.push("2. Log into that site");
-  lines.push("3. Fully quit Chrome (Cmd+Q on Mac, not just close the window)");
-  lines.push("4. Run diagnose_logins again");
+  lines.push("If any board shows NOT logged in, run login_setup to authenticate.");
 
   return lines.join("\n");
 }

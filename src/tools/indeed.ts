@@ -14,7 +14,7 @@ export async function scrapeIndeed(page: Page, role: string, location = "", limi
       sort: "date",
       start: String(pageIndex * PAGE_SIZE),
     });
-    if (location) params.set("l", location);
+    params.set("l", location || "United States");
 
     await page.goto(`https://www.indeed.com/jobs?${params}`, {
       waitUntil: "domcontentloaded",

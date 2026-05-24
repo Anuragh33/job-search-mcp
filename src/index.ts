@@ -81,8 +81,8 @@ const TOOLS = [
       type: "object",
       properties: {
         role: { type: "string", description: "Job title to search, e.g. 'Full Stack Developer'" },
-        location: { type: "string", description: "Optional location, e.g. 'New York' or 'Remote'" },
-        limit: { type: "number", description: "Max results per board (default 100)" },
+        location: { type: "string", description: "Location filter (default: 'United States'). Override with a city/state e.g. 'New York' or 'Remote'" },
+        limit: { type: "number", description: "Max results per board. Defaults to unlimited — returns every job found by paginating until the board runs out." },
         hours: { type: "number", description: "Only return jobs posted within this many hours (default 24)" },
       },
       required: ["role"],
@@ -95,8 +95,8 @@ const TOOLS = [
       type: "object",
       properties: {
         role: { type: "string", description: "Job title to search" },
-        location: { type: "string", description: "Optional location filter" },
-        limit: { type: "number" },
+        location: { type: "string", description: "Location filter (default: United States)" },
+        limit: { type: "number", description: "Max results, default unlimited" },
         hours: { type: "number", description: "Only return jobs posted within this many hours (default 24)" },
       },
       required: ["role"],
@@ -109,8 +109,8 @@ const TOOLS = [
       type: "object",
       properties: {
         role: { type: "string", description: "Job title to search" },
-        location: { type: "string", description: "Optional location filter" },
-        limit: { type: "number" },
+        location: { type: "string", description: "Location filter (default: United States)" },
+        limit: { type: "number", description: "Max results, default unlimited" },
         hours: { type: "number", description: "Only return jobs posted within this many hours (default 24)" },
       },
       required: ["role"],
@@ -123,8 +123,8 @@ const TOOLS = [
       type: "object",
       properties: {
         role: { type: "string", description: "Job title to search" },
-        location: { type: "string", description: "Optional location filter" },
-        limit: { type: "number" },
+        location: { type: "string", description: "Location filter (default: United States)" },
+        limit: { type: "number", description: "Max results, default unlimited" },
         hours: { type: "number", description: "Only return jobs posted within this many hours (default 24)" },
       },
       required: ["role"],
@@ -137,8 +137,8 @@ const TOOLS = [
       type: "object",
       properties: {
         role: { type: "string", description: "Job title to search" },
-        location: { type: "string", description: "Optional location filter" },
-        limit: { type: "number" },
+        location: { type: "string", description: "Location filter (default: United States)" },
+        limit: { type: "number", description: "Max results, default unlimited" },
         hours: { type: "number", description: "Only return jobs posted within this many hours (default 24)" },
       },
       required: ["role"],
@@ -204,8 +204,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }))
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
   const role = args?.role as string;
-  const location = (args?.location as string) ?? "";
-  const limit = (args?.limit as number) ?? 100;
+  const location = (args?.location as string) ?? "United States";
+  const limit = (args?.limit as number) ?? 10000; // paginate until boards run out
   const hours = (args?.hours as number) ?? 24;
 
   try {

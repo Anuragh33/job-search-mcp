@@ -12,7 +12,7 @@ export async function scrapeGlassdoor(page: Page, role: string, location = "", l
       sort: "date_desc",
       p: String(pageNum),
     });
-    if (location) params.set("locKeyword", location);
+    params.set("locKeyword", location || "United States");
 
     await page.goto(`https://www.glassdoor.com/Job/jobs.htm?${params}`, {
       waitUntil: "domcontentloaded",

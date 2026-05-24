@@ -12,7 +12,7 @@ export async function scrapeZipRecruiter(page: Page, role: string, location = ""
       sort_by: "date",
       page: String(pageNum),
     });
-    if (location) params.set("location", location);
+    params.set("location", location || "United States");
 
     await page.goto(`https://www.ziprecruiter.com/jobs-search?${params}`, {
       waitUntil: "domcontentloaded",

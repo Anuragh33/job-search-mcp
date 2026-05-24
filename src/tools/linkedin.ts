@@ -14,7 +14,7 @@ export async function scrapeLinkedIn(page: Page, role: string, location = "", li
       sortBy: "DD",           // DD = date descending — all jobs, not just top matches
       start: String(pageIndex * PAGE_SIZE),
     });
-    if (location) params.set("location", location);
+    params.set("location", location || "United States");
 
     await page.goto(`https://www.linkedin.com/jobs/search/?${params}`, {
       waitUntil: "domcontentloaded",

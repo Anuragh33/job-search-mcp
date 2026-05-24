@@ -13,6 +13,7 @@ import { scrapeIndeed } from "./tools/indeed.js";
 import { scrapeZipRecruiter } from "./tools/ziprecruiter.js";
 import { scrapeGlassdoor } from "./tools/glassdoor.js";
 import { checkSetup } from "./tools/setup.js";
+import { diagnoseLogins } from "./tools/diagnose.js";
 import type { Job } from "./types.js";
 
 function toTable(jobs: Job[]): string {
@@ -68,6 +69,13 @@ Run \`check_setup\` at any time to verify your environment is correctly configur
 `.trim();
 
 const TOOLS = [
+  {
+    name: "diagnose_logins",
+    description:
+      "Opens each job board in a real browser window and checks whether you are logged in. " +
+      "Run this if Indeed, ZipRecruiter, or Glassdoor are returning zero results.",
+    inputSchema: { type: "object", properties: {} },
+  },
   {
     name: "check_setup",
     description:
@@ -213,6 +221,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const hours = (args?.hours as number) ?? 24;
 
   try {
+    if (name === "diagnose_logins") {
+      const report = await diagnoseLogins();
+      return { content: [{ type: "text", text: report }] };
+    }
+
     if (name === "check_setup") {
       const { report } = await checkSetup();
       return { content: [{ type: "text", text: report }] };

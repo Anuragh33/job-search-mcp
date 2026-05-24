@@ -32,19 +32,14 @@ npm run build
 npx playwright install chromium
 \`\`\`
 
-**2. Log in to each job board in Google Chrome**
-Open Chrome and sign in to:
-- LinkedIn → https://www.linkedin.com/login
-- Indeed → https://secure.indeed.com/auth
-- ZipRecruiter → https://www.ziprecruiter.com/login
-- Glassdoor → https://www.glassdoor.com/profile/login_input.htm
+**2. Log in to each job board (one-time setup)**
+Run the \`login_setup\` tool. It will open a browser window and walk you through logging into LinkedIn and Glassdoor. Indeed and ZipRecruiter use public RSS feeds and do not require login.
 
-**3. Close Chrome before searching**
-The tool borrows your Chrome login sessions. Chrome must be fully closed (not just minimized) when you run a search, otherwise it falls back to a logged-out session and returns fewer results.
-
-**4. You're ready!**
+**3. You're ready!**
 Attach your resume PDF to Claude and say:
 > "Look at my resume, figure out what role I'm best suited for, and search for matching jobs posted in the last 24 hours"
+
+Chrome does not need to be open or closed — this tool uses its own dedicated browser session.
 
 Run \`check_setup\` at any time to verify your environment is correctly configured.
 `.trim();
@@ -315,7 +310,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           return {
             content: [{
               type: "text",
-              text: `No jobs found. This usually means Chrome is open (close it and try again) or you are not logged in to the job boards.\n\nRun check_setup to diagnose.\n\n${SETUP_INSTRUCTIONS}`,
+              text: `No jobs found. This usually means you have not logged in to LinkedIn and Glassdoor yet.\n\nRun login_setup to authenticate, then try again.\n\n${SETUP_INSTRUCTIONS}`,
             }],
           };
         }

@@ -15,9 +15,10 @@ export async function scrapeGlassdoor(page: Page, role: string, location = "", l
     if (location) params.set("locKeyword", location);
 
     await page.goto(`https://www.glassdoor.com/Job/jobs.htm?${params}`, {
-      waitUntil: "networkidle",
+      waitUntil: "domcontentloaded",
       timeout: 45000,
     });
+    await page.waitForTimeout(4000);
 
     // Dismiss any modal — cookie consent, sign-in prompt, etc.
     const dismissSelectors = [

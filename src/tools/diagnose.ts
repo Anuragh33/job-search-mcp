@@ -1,4 +1,5 @@
-import { launchContext } from "../browser.js";
+import { launchContext, PROFILE_DIR } from "../browser.js";
+import { existsSync } from "fs";
 
 const BOARDS = [
   { name: "LinkedIn",     url: "https://www.linkedin.com/feed/",         loggedInSignal: "feed" },
@@ -8,8 +9,14 @@ const BOARDS = [
 ];
 
 export async function diagnoseLogins(): Promise<string> {
-  const context = await launchContext();
   const lines: string[] = ["# Login Diagnostics\n"];
+
+  if (!existsSync(PROFILE_DIR)) {
+    lines.push("⚠️  No saved sessions found. Run login_setup first.");
+    return lines.join("\n");
+  }
+
+  const context = await launchContext();
 
   try {
     for (const board of BOARDS) {

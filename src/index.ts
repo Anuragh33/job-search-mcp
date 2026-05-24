@@ -14,6 +14,7 @@ import { scrapeZipRecruiter } from "./tools/ziprecruiter.js";
 import { scrapeGlassdoor } from "./tools/glassdoor.js";
 import { checkSetup } from "./tools/setup.js";
 import { diagnoseLogins } from "./tools/diagnose.js";
+import { loginSetup } from "./tools/login.js";
 import type { Job } from "./types.js";
 
 function toJSON(jobs: Job[], sources?: Record<string, number | string>): string {
@@ -48,6 +49,14 @@ Run \`check_setup\` at any time to verify your environment is correctly configur
 `.trim();
 
 const TOOLS = [
+  {
+    name: "login_setup",
+    description:
+      "Run this ONCE on first use. Opens a browser window and guides you through logging into " +
+      "LinkedIn, Indeed, ZipRecruiter, and Glassdoor. Sessions are saved permanently — " +
+      "you only need to run this again if cookies expire.",
+    inputSchema: { type: "object", properties: {} },
+  },
   {
     name: "diagnose_logins",
     description:
@@ -200,6 +209,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const hours = (args?.hours as number) ?? 24;
 
   try {
+    if (name === "login_setup") {
+      const report = await loginSetup();
+      return { content: [{ type: "text", text: report }] };
+    }
+
     if (name === "diagnose_logins") {
       const report = await diagnoseLogins();
       return { content: [{ type: "text", text: report }] };

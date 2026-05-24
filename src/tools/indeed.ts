@@ -17,17 +17,16 @@ export async function scrapeIndeed(page: Page, role: string, location = "", limi
     if (location) params.set("l", location);
 
     await page.goto(`https://www.indeed.com/jobs?${params}`, {
-      waitUntil: "networkidle",
+      waitUntil: "domcontentloaded",
       timeout: 45000,
     });
+    await page.waitForTimeout(3000);
 
-    // Dismiss cookie/consent banner
     await page.locator("button#onetrust-accept-btn-handler, button[id*='accept']")
-      .first().click({ timeout: 3000 }).catch(() => null);
+      .first().click({ timeout: 2000 }).catch(() => null);
 
-    // Scroll to trigger lazy-loaded cards
     await page.evaluate(() => window.scrollBy(0, 600));
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(1000);
 
     const batch = await page.evaluate(() => {
       // Try multiple selector patterns — Indeed redesigns frequently

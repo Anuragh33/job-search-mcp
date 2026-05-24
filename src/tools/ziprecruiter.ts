@@ -15,11 +15,11 @@ export async function scrapeZipRecruiter(page: Page, role: string, location = ""
     if (location) params.set("location", location);
 
     await page.goto(`https://www.ziprecruiter.com/jobs-search?${params}`, {
-      waitUntil: "networkidle",
+      waitUntil: "domcontentloaded",
       timeout: 45000,
     });
-
-    await page.evaluate(() => window.scrollBy(0, 600));
+    await page.waitForTimeout(3000);
+    await page.evaluate(() => window.scrollBy(0, 800));
     await page.waitForTimeout(1500);
 
     const batch = await page.evaluate(() => {
@@ -29,6 +29,8 @@ export async function scrapeZipRecruiter(page: Page, role: string, location = ""
         ".jobList-item",
         "div[class*='job_content']",
         "li[class*='job-listing']",
+        "div[class*='JobCard']",
+        "a[data-testid='job-title-link']",
       ];
 
       let cards: Element[] = [];

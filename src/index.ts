@@ -4,27 +4,64 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { launchContext } from "./browser.js";
 import { scrapeLinkedIn } from "./tools/linkedin.js";
 import { scrapeIndeed } from "./tools/indeed.js";
 import { scrapeZipRecruiter } from "./tools/ziprecruiter.js";
 import { scrapeGlassdoor } from "./tools/glassdoor.js";
+import { checkSetup } from "./tools/setup.js";
 import type { Job } from "./types.js";
 
+const SETUP_INSTRUCTIONS = `
+Before using this tool, make sure you have completed the following steps:
+
+**1. Install dependencies**
+\`\`\`bash
+npm install
+npm run build
+npx playwright install chromium
+\`\`\`
+
+**2. Log in to each job board in Google Chrome**
+Open Chrome and sign in to:
+- LinkedIn → https://www.linkedin.com/login
+- Indeed → https://secure.indeed.com/auth
+- ZipRecruiter → https://www.ziprecruiter.com/login
+- Glassdoor → https://www.glassdoor.com/profile/login_input.htm
+
+**3. Close Chrome before searching**
+The tool borrows your Chrome login sessions. Chrome must be fully closed (not just minimized) when you run a search, otherwise it falls back to a logged-out session and returns fewer results.
+
+**4. You're ready!**
+Attach your resume PDF to Claude and say:
+> "Look at my resume, figure out what role I'm best suited for, and search for matching jobs posted in the last 24 hours"
+
+Run \`check_setup\` at any time to verify your environment is correctly configured.
+`.trim();
+
 const TOOLS = [
+  {
+    name: "check_setup",
+    description:
+      "Run this first. Verifies that Node.js, Chrome, and Playwright are correctly installed, " +
+      "and shows a checklist of job board logins required before searching.",
+    inputSchema: { type: "object", properties: {} },
+  },
   {
     name: "search_jobs",
     description:
       "Search for job listings across LinkedIn, Indeed, ZipRecruiter, and Glassdoor in parallel. " +
       "Use this after extracting the target role from a resume. " +
-      "Uses the user's local Chrome session so results are authenticated where possible.",
+      "Requires Chrome to be closed and the user to be logged into each job board in Chrome.",
     inputSchema: {
       type: "object",
       properties: {
         role: { type: "string", description: "Job title to search, e.g. 'Full Stack Developer'" },
         location: { type: "string", description: "Optional location, e.g. 'New York' or 'Remote'" },
-        limit: { type: "number", description: "Max results per board (default 20)" },
+        limit: { type: "number", description: "Max results per board (default 100)" },
         hours: { type: "number", description: "Only return jobs posted within this many hours (default 24)" },
       },
       required: ["role"],
@@ -90,8 +127,56 @@ const TOOLS = [
 
 const server = new Server(
   { name: "job-search-mcp", version: "2.0.0" },
-  { capabilities: { tools: {} } }
+  { capabilities: { tools: {}, prompts: {} } }
 );
+
+// Prompts — shows as a slash command in Claude desktop
+server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+  prompts: [
+    {
+      name: "setup",
+      description: "Show setup instructions for the Job Search MCP tool",
+    },
+    {
+      name: "search-from-resume",
+      description: "Search for jobs based on your resume — attach your PDF first",
+    },
+  ],
+}));
+
+server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+  if (request.params.name === "setup") {
+    return {
+      description: "Job Search MCP — Setup Instructions",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: `Please show me the setup instructions for the Job Search MCP tool and then run check_setup to verify my environment.\n\n${SETUP_INSTRUCTIONS}`,
+          },
+        },
+      ],
+    };
+  }
+
+  if (request.params.name === "search-from-resume") {
+    return {
+      description: "Search jobs from resume",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: "I have attached my resume PDF. Please read it, identify the role I am best suited for, and then use search_jobs to find matching positions posted in the last 24 hours. Present the results in a clear, readable list grouped by job board.",
+          },
+        },
+      ],
+    };
+  }
+
+  throw new Error(`Unknown prompt: ${request.params.name}`);
+});
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 
@@ -103,6 +188,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const hours = (args?.hours as number) ?? 24;
 
   try {
+    if (name === "check_setup") {
+      const { report } = await checkSetup();
+      return { content: [{ type: "text", text: report }] };
+    }
+
     if (name === "search_jobs") {
       const context = await launchContext();
       try {
@@ -134,6 +224,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           glassdoor: glassdoor.status === "fulfilled" ? glassdoor.value.length : `error: ${(glassdoor as PromiseRejectedResult).reason}`,
         };
 
+        if (allJobs.length === 0) {
+          return {
+            content: [{
+              type: "text",
+              text: `No jobs found. This usually means Chrome is open (close it and try again) or you are not logged in to the job boards.\n\nRun check_setup to diagnose.\n\n${SETUP_INSTRUCTIONS}`,
+            }],
+          };
+        }
+
         return {
           content: [{
             type: "text",
@@ -145,7 +244,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
     }
 
-    // Single-board tools
     const scrapers: Record<string, (role: string, location: string, limit: number, hours: number) => Promise<Job[]>> = {
       search_linkedin: singleBoard(scrapeLinkedIn),
       search_indeed: singleBoard(scrapeIndeed),

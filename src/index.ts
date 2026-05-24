@@ -15,6 +15,31 @@ import { scrapeGlassdoor } from "./tools/glassdoor.js";
 import { checkSetup } from "./tools/setup.js";
 import type { Job } from "./types.js";
 
+function toTable(jobs: Job[]): string {
+  if (jobs.length === 0) return "No jobs found.";
+
+  const rows = jobs.map((j, i) => [
+    String(i + 1),
+    j.title,
+    j.company,
+    j.location || "—",
+    j.posted || "—",
+    j.source,
+    j.url,
+  ]);
+
+  const headers = ["#", "Title", "Company", "Location", "Posted", "Source", "URL"];
+  const widths = headers.map((h, i) =>
+    Math.max(h.length, ...rows.map((r) => r[i].length))
+  );
+
+  const line = (cols: string[]) =>
+    "| " + cols.map((c, i) => c.padEnd(widths[i])).join(" | ") + " |";
+  const divider = "| " + widths.map((w) => "-".repeat(w)).join(" | ") + " |";
+
+  return [line(headers), divider, ...rows.map(line)].join("\n");
+}
+
 const SETUP_INSTRUCTIONS = `
 Before using this tool, make sure you have completed the following steps:
 
@@ -233,10 +258,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           };
         }
 
+        const summary = Object.entries(sources)
+          .map(([board, count]) => `${board}: ${count}`)
+          .join(" | ");
+
         return {
           content: [{
             type: "text",
-            text: JSON.stringify({ total: allJobs.length, sources, jobs: allJobs }, null, 2),
+            text: `**Total: ${allJobs.length} jobs** (${summary})\n\n${toTable(allJobs)}`,
           }],
         };
       } finally {
@@ -257,7 +286,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     return {
       content: [{
         type: "text",
-        text: JSON.stringify({ total: jobs.length, jobs }, null, 2),
+        text: `**Total: ${jobs.length} jobs**\n\n${toTable(jobs)}`,
       }],
     };
   } catch (err) {

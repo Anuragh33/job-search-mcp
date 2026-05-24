@@ -32,14 +32,11 @@ npm run build
 npx playwright install chromium
 \`\`\`
 
-**2. Log in to each job board (one-time setup)**
-Run the \`login_setup\` tool. It will open a browser window and walk you through logging into LinkedIn and Glassdoor. Indeed and ZipRecruiter use public RSS feeds and do not require login.
+**2. You're ready — no login required**
+This tool searches LinkedIn, SimplyHired, Dice, and Remotive. None of these require an account.
 
-**3. You're ready!**
 Attach your resume PDF to Claude and say:
 > "Look at my resume, figure out what role I'm best suited for, and search for matching jobs posted in the last 24 hours"
-
-Chrome does not need to be open or closed — this tool uses its own dedicated browser session.
 
 Run \`check_setup\` at any time to verify your environment is correctly configured.
 `.trim();
@@ -224,14 +221,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (name === "search_and_export") {
       const context = await launchContext();
       try {
-        const [p1, p4] = await Promise.all([
-          context.newPage(), context.newPage(),
+        const [p1, p2, p3] = await Promise.all([
+          context.newPage(), context.newPage(), context.newPage(),
         ]);
         const [linkedin, indeed, ziprecruiter, glassdoor] = await Promise.allSettled([
           scrapeLinkedIn(p1, role, location, limit, hours),
-          scrapeIndeed(null, role, location, limit, hours),
+          scrapeIndeed(p2, role, location, limit, hours),
           scrapeZipRecruiter(null, role, location, limit, hours),
-          scrapeGlassdoor(p4, role, location, limit, hours),
+          scrapeGlassdoor(p3, role, location, limit, hours),
         ]);
         const allJobs: Job[] = [
           ...(linkedin.status === "fulfilled" ? linkedin.value : []),
@@ -280,15 +277,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (name === "search_jobs") {
       const context = await launchContext();
       try {
-        const [p1, p4] = await Promise.all([
-          context.newPage(),
-          context.newPage(),
+        const [p1, p2, p3, p4] = await Promise.all([
+          context.newPage(), context.newPage(), context.newPage(), context.newPage(),
         ]);
 
         const [linkedin, indeed, ziprecruiter, glassdoor] = await Promise.allSettled([
           scrapeLinkedIn(p1, role, location, limit, hours),
-          scrapeIndeed(null, role, location, limit, hours),      // RSS — no browser needed
-          scrapeZipRecruiter(null, role, location, limit, hours), // RSS — no browser needed
+          scrapeIndeed(p2, role, location, limit, hours),
+          scrapeZipRecruiter(p3, role, location, limit, hours),
           scrapeGlassdoor(p4, role, location, limit, hours),
         ]);
 
@@ -310,7 +306,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           return {
             content: [{
               type: "text",
-              text: `No jobs found. This usually means you have not logged in to LinkedIn and Glassdoor yet.\n\nRun login_setup to authenticate, then try again.\n\n${SETUP_INSTRUCTIONS}`,
+              text: `No jobs found. Run check_setup to verify your environment, then try again.\n\n${SETUP_INSTRUCTIONS}`,
             }],
           };
         }

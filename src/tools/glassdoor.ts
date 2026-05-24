@@ -1,65 +1,48 @@
 import { Page } from "playwright";
 import type { Job } from "../types.js";
 
-export async function scrapeGlassdoor(page: Page, role: string, location = "", limit = 25, hours = 24): Promise<Job[]> {
+// Glassdoor blocks all automated access via Cloudflare.
+// Dice.com is used instead — it's a major US tech-focused job board with no bot protection.
+export async function scrapeGlassdoor(
+  page: Page,
+  role: string,
+  _location = "United States",
+  limit = 100,
+  _hours = 24
+): Promise<Job[]> {
   const jobs: Job[] = [];
   let pageNum = 1;
 
   while (jobs.length < limit) {
     const params = new URLSearchParams({
-      sc_keyword: role,
-      fromAge: String(Math.max(1, Math.ceil(hours / 24))),
-      sort: "date_desc",
-      p: String(pageNum),
+      q: role,
+      location: "United States",
+      datePosted: "ONE",
+      page: String(pageNum),
     });
-    params.set("locKeyword", location || "United States");
 
-    await page.goto(`https://www.glassdoor.com/Job/jobs.htm?${params}`, {
+    await page.goto(`https://www.dice.com/jobs?${params}`, {
       waitUntil: "domcontentloaded",
       timeout: 45000,
     });
-    await page.waitForTimeout(4000);
-
-    // Dismiss any modal — cookie consent, sign-in prompt, etc.
-    const dismissSelectors = [
-      "button[data-test='modal-close-btn']",
-      "#onetrust-accept-btn-handler",
-      "button[alt='Close']",
-      "[class*='modal'] button[class*='close']",
-      "button[class*='CloseButton']",
-    ];
-    for (const sel of dismissSelectors) {
-      await page.locator(sel).first().click({ timeout: 2000 }).catch(() => null);
-    }
-
-    await page.evaluate(() => window.scrollBy(0, 600));
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(3000);
 
     const batch = await page.evaluate(() => {
-      const selectors = [
-        "li[data-test='jobListing']",
-        "li[class*='JobsList']",
-        "div[data-test='job-search-results'] li",
-        "li[class*='react-job-listing']",
-        "article[class*='jobCard']",
-      ];
-
-      let cards: Element[] = [];
-      for (const sel of selectors) {
-        cards = Array.from(document.querySelectorAll(sel));
-        if (cards.length > 0) break;
-      }
-
+      const cards = Array.from(document.querySelectorAll("[data-testid='job-card']"));
       return cards.map((card) => {
-        const anchor = card.querySelector("a[data-test='job-title'], a[class*='jobLink'], a[href*='/job-listing/']") as HTMLAnchorElement;
-        const href = anchor?.href ?? "";
+        const titleEl = card.querySelector("[data-testid='job-search-job-detail-link']") as HTMLAnchorElement;
+        const paras = Array.from(card.querySelectorAll("p")).map((p) => p.textContent?.trim() ?? "");
+        const company = paras.find((t) => t.length > 2 && !/•|Sponsored|Full-time|Part-time|Contract|Today|ago/.test(t)) ?? "";
+        const location = paras.find((t) => /,\s+[A-Z]|Remote/.test(t)) ?? "";
+        const posted = paras.find((t) => /Today|ago|hour|day|week/.test(t)) ?? "";
+
         return {
-          title: (card.querySelector("[data-test='job-title'], [class*='jobTitle'], [class*='JobTitle']") as HTMLElement)?.textContent?.trim() ?? "",
-          company: (card.querySelector("[data-test='employer-name'], [class*='EmployerName'], [class*='employer-name']") as HTMLElement)?.textContent?.trim() ?? "",
-          location: (card.querySelector("[data-test='emp-location'], [class*='location'], [class*='Location']") as HTMLElement)?.textContent?.trim() ?? "",
-          url: href.startsWith("http") ? href : `https://www.glassdoor.com${href}`,
-          posted: (card.querySelector("[data-test='listing-age'], [class*='listingAge'], time") as HTMLElement)?.textContent?.trim() ?? "",
-          source: "Glassdoor",
+          title: titleEl?.textContent?.trim() ?? "",
+          company,
+          location,
+          url: titleEl?.href ?? "",
+          posted,
+          source: "Dice",
         };
       }).filter((j) => j.title && j.url);
     });
@@ -67,6 +50,7 @@ export async function scrapeGlassdoor(page: Page, role: string, location = "", l
     if (batch.length === 0) break;
     jobs.push(...batch);
     pageNum++;
+    if (batch.length < 10) break;
   }
 
   return jobs.slice(0, limit);

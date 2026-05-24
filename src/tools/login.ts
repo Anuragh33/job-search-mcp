@@ -1,47 +1,8 @@
-import { chromium } from "playwright";
-import { PROFILE_DIR } from "../browser.js";
-
-const BOARDS = [
-  { name: "LinkedIn",  loginUrl: "https://www.linkedin.com/login",                    checkUrl: "linkedin.com/feed" },
-  { name: "Glassdoor", loginUrl: "https://www.glassdoor.com/profile/login_input.htm", checkUrl: "glassdoor.com" },
-];
-// Indeed and ZipRecruiter use public RSS feeds — no login needed
-
 export async function loginSetup(): Promise<string> {
-  const lines: string[] = [
-    "Opening browser for login setup.",
-    "A browser window will open. Log into LinkedIn and Glassdoor when prompted.",
-    "Indeed and ZipRecruiter use RSS feeds — no login needed for those.",
+  return [
+    "No login required.",
     "",
-  ];
-
-  const context = await chromium.launchPersistentContext(PROFILE_DIR, {
-    headless: false,
-    args: ["--no-sandbox", "--disable-blink-features=AutomationControlled"],
-    ignoreDefaultArgs: ["--enable-automation"],
-  });
-
-  for (const board of BOARDS) {
-    const page = await context.newPage();
-    await page.goto(board.loginUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
-    lines.push(`➡️  ${board.name}: Please log in now in the browser window.`);
-
-    // Wait up to 3 minutes for user to log in
-    try {
-      await page.waitForURL((url) => url.href.includes(board.checkUrl), { timeout: 180000 });
-      lines.push(`✅ ${board.name}: Login detected.`);
-    } catch {
-      lines.push(`⚠️  ${board.name}: Login not confirmed (timed out). You can re-run login_setup anytime.`);
-    }
-
-    await page.close();
-  }
-
-  await context.close();
-
-  lines.push("");
-  lines.push("Login setup complete. Sessions are saved — you won't need to log in again unless cookies expire.");
-  lines.push("Run diagnose_logins to verify, then search_jobs to start searching.");
-
-  return lines.join("\n");
+    "This tool searches LinkedIn, SimplyHired, Dice, and Remotive — all of which work without an account.",
+    "Just run search_jobs or search_and_export to start searching.",
+  ].join("\n");
 }

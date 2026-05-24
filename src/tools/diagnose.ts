@@ -1,19 +1,13 @@
-import { launchContext, PROFILE_DIR } from "../browser.js";
-import { existsSync } from "fs";
+import { launchContext } from "../browser.js";
 
 const BOARDS = [
-  { name: "LinkedIn",  url: "https://www.linkedin.com/feed/",        loggedInSignal: "feed" },
-  { name: "Glassdoor", url: "https://www.glassdoor.com/",            loggedInSignal: "glassdoor.com" },
+  { name: "LinkedIn",    url: "https://www.linkedin.com/jobs/",   signal: "linkedin.com" },
+  { name: "SimplyHired", url: "https://www.simplyhired.com/",     signal: "simplyhired.com" },
+  { name: "Dice",        url: "https://www.dice.com/jobs",        signal: "dice.com" },
 ];
-// Indeed and ZipRecruiter use RSS feeds — no login check needed
 
 export async function diagnoseLogins(): Promise<string> {
-  const lines: string[] = ["# Login Diagnostics\n"];
-
-  if (!existsSync(PROFILE_DIR)) {
-    lines.push("⚠️  No saved sessions found. Run login_setup first.");
-    return lines.join("\n");
-  }
+  const lines: string[] = ["# Connectivity Check\n", "No login is required. Checking that each job board is reachable...\n"];
 
   const context = await launchContext();
 
@@ -23,33 +17,21 @@ export async function diagnoseLogins(): Promise<string> {
       try {
         await page.goto(board.url, { waitUntil: "domcontentloaded", timeout: 20000 });
         await page.waitForTimeout(2000);
-
         const finalUrl = page.url();
-        const title = await page.title();
-        const isLoggedIn =
-          finalUrl.includes(board.loggedInSignal) &&
-          !finalUrl.includes("login") &&
-          !finalUrl.includes("signin") &&
-          !finalUrl.includes("authwall");
-
-        lines.push(`## ${board.name}`);
-        lines.push(`- Status: ${isLoggedIn ? "✅ Logged in" : "❌ NOT logged in"}`);
-        lines.push(`- Final URL: ${finalUrl}`);
-        lines.push(`- Page title: ${title}`);
-        lines.push("");
+        const ok = finalUrl.includes(board.signal) && !finalUrl.includes("challenge") && !finalUrl.includes("just-a-moment");
+        lines.push(`${board.name}: ${ok ? "OK" : "unreachable — " + finalUrl}`);
       } catch (err) {
-        lines.push(`## ${board.name}`);
-        lines.push(`- Status: ❌ Error — ${(err as Error).message}`);
-        lines.push("");
+        lines.push(`${board.name}: Error — ${(err as Error).message}`);
       } finally {
         await page.close();
       }
     }
+
+    lines.push("");
+    lines.push("Remotive API: always reachable (no browser needed).");
   } finally {
     await context.close();
   }
-
-  lines.push("If any board shows NOT logged in, run login_setup to authenticate.");
 
   return lines.join("\n");
 }

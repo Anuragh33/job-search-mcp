@@ -1,57 +1,35 @@
 import type { Job } from "../types.js";
 
+// ZipRecruiter blocks all automated access via Cloudflare.
+// Remotive provides a free public API for remote jobs with no auth required.
 export async function scrapeZipRecruiter(
   _page: unknown,
   role: string,
-  location = "United States",
+  _location = "United States",
   limit = 100,
-  hours = 24
+  _hours = 24
 ): Promise<Job[]> {
-  const jobs: Job[] = [];
-  let page = 1;
+  const res = await fetch(
+    `https://remotive.com/api/remote-jobs?search=${encodeURIComponent(role)}&limit=${limit}`,
+    { headers: { "Accept": "application/json" } }
+  );
 
-  while (jobs.length < limit) {
-    const params = new URLSearchParams({
-      search: role,
-      location,
-      days: String(Math.max(1, Math.ceil(hours / 24))),
-      page: String(page),
-    });
+  if (!res.ok) return [];
 
-    const res = await fetch(`https://www.ziprecruiter.com/jobs.rss?${params}`, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; RSS reader)" },
-    });
+  const data = await res.json() as { jobs?: Array<{
+    title: string;
+    company_name: string;
+    candidate_required_location: string;
+    url: string;
+    publication_date: string;
+  }> };
 
-    if (!res.ok) break;
-    const xml = await res.text();
-    const items = xml.match(/<item>([\s\S]*?)<\/item>/g) ?? [];
-    if (items.length === 0) break;
-
-    for (const item of items) {
-      const title   = extractCDATA(item, "title");
-      const url     = extract(item, "link") || extractCDATA(item, "guid");
-      const company = extractCDATA(item, "source") || extract(item, "source");
-      const date    = extract(item, "pubDate");
-      const loc     = extractCDATA(item, "location") || extract(item, "location");
-
-      if (title && url) {
-        jobs.push({ title, company, location: loc, url, posted: date, source: "ZipRecruiter" });
-      }
-    }
-
-    if (items.length < 10) break;
-    page++;
-  }
-
-  return jobs.slice(0, limit);
-}
-
-function extractCDATA(xml: string, tag: string): string {
-  const m = xml.match(new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>|([\\s\\S]*?))<\\/${tag}>`));
-  return (m?.[1] ?? m?.[2] ?? "").trim();
-}
-
-function extract(xml: string, tag: string): string {
-  const m = xml.match(new RegExp(`<${tag}[^>]*/?>([\\s\\S]*?)<\\/${tag}>`));
-  return (m?.[1] ?? "").trim();
+  return (data.jobs ?? []).slice(0, limit).map((j) => ({
+    title: j.title,
+    company: j.company_name,
+    location: j.candidate_required_location || "Remote",
+    url: j.url,
+    posted: j.publication_date,
+    source: "Remotive (Remote)",
+  }));
 }

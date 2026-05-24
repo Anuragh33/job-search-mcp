@@ -11,7 +11,7 @@ export async function scrapeLinkedIn(page: Page, role: string, location = "", li
     const params = new URLSearchParams({
       keywords: role,
       f_TPR: `r${hours * 3600}`,
-      sortBy: "DD",           // DD = date descending — all jobs, not just top matches
+      sortBy: "DD",
       start: String(pageIndex * PAGE_SIZE),
     });
     params.set("location", location || "United States");
@@ -21,21 +21,15 @@ export async function scrapeLinkedIn(page: Page, role: string, location = "", li
       timeout: 30000,
     });
 
-    if (page.url().includes("/login") || page.url().includes("/authwall")) break;
-
-    await page.waitForSelector(
-      ".jobs-search__results-list li, .scaffold-layout__list-item",
-      { timeout: 15000 }
-    ).catch(() => null);
+    await page.waitForSelector(".job-search-card", { timeout: 15000 }).catch(() => null);
+    await page.waitForTimeout(2000);
 
     const batch = await page.evaluate(() => {
-      return Array.from(
-        document.querySelectorAll(".jobs-search__results-list li, .scaffold-layout__list-item")
-      ).map((card) => ({
-        title: card.querySelector(".base-search-card__title, .job-card-list__title")?.textContent?.trim() ?? "",
-        company: card.querySelector(".base-search-card__subtitle, .job-card-container__company-name")?.textContent?.trim() ?? "",
-        location: card.querySelector(".job-search-card__location, .job-card-container__metadata-item")?.textContent?.trim() ?? "",
-        url: (card.querySelector("a[href*='/jobs/view/']") as HTMLAnchorElement)?.href ?? "",
+      return Array.from(document.querySelectorAll(".job-search-card")).map((card) => ({
+        title: card.querySelector("h3")?.textContent?.trim() ?? "",
+        company: card.querySelector("h4")?.textContent?.trim() ?? "",
+        location: card.querySelector(".job-search-card__location")?.textContent?.trim() ?? "",
+        url: card.querySelector("a[href*='/jobs/view/']")?.getAttribute("href") ?? "",
         posted: card.querySelector("time")?.getAttribute("datetime") ?? "",
         source: "LinkedIn",
       })).filter((j) => j.title && j.url);
@@ -44,6 +38,7 @@ export async function scrapeLinkedIn(page: Page, role: string, location = "", li
     if (batch.length === 0) break;
     jobs.push(...batch);
     pageIndex++;
+    if (batch.length < PAGE_SIZE) break;
   }
 
   return jobs.slice(0, limit);

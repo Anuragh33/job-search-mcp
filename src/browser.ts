@@ -1,26 +1,26 @@
 import { chromium, BrowserContext } from "playwright";
-import os from "os";
-import path from "path";
-
-// Dedicated profile dir — Playwright owns this, not Chrome
-export const PROFILE_DIR = path.join(os.homedir(), ".job-search-mcp-sessions");
 
 export async function launchContext(): Promise<BrowserContext> {
-  const context = await chromium.launchPersistentContext(PROFILE_DIR, {
-    headless: false,
-    args: [
-      "--no-sandbox",
-      "--disable-blink-features=AutomationControlled",
-      "--disable-dev-shm-usage",
-    ],
-    ignoreDefaultArgs: ["--enable-automation"],
+  const browser = await chromium.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-blink-features=AutomationControlled"],
   });
 
-  // Remove webdriver fingerprint from every page
+  const context = await browser.newContext({
+    userAgent:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+  });
+
   await context.addInitScript(() => {
     Object.defineProperty(navigator, "webdriver", { get: () => false });
-    Object.defineProperty(navigator, "plugins", { get: () => [1, 2, 3] });
   });
+
+  // Patch close to also close the browser
+  const origClose = context.close.bind(context);
+  context.close = async () => {
+    await origClose();
+    await browser.close();
+  };
 
   return context;
 }

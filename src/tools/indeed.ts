@@ -1,68 +1,52 @@
+import { Page } from "playwright";
 import type { Job } from "../types.js";
 
+// Indeed is blocked by Cloudflare. SimplyHired is used instead —
+// it's a major US job aggregator with no bot protection.
 export async function scrapeIndeed(
-  _page: unknown,
+  page: Page,
   role: string,
   location = "United States",
   limit = 100,
-  hours = 24
+  _hours = 24
 ): Promise<Job[]> {
   const jobs: Job[] = [];
-  let start = 0;
-  const pageSize = 25;
+  let offset = 0;
 
   while (jobs.length < limit) {
     const params = new URLSearchParams({
       q: role,
       l: location,
-      sort: "date",
-      fromage: String(Math.max(1, Math.ceil(hours / 24))),
-      start: String(start),
+      sort: "d",
+      pn: String(Math.floor(offset / 20) + 1),
     });
 
-    const res = await fetch(`https://www.indeed.com/rss?${params}`, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; RSS reader)" },
+    await page.goto(`https://www.simplyhired.com/search?${params}`, {
+      waitUntil: "domcontentloaded",
+      timeout: 45000,
+    });
+    await page.waitForTimeout(3000);
+
+    const batch = await page.evaluate(() => {
+      const cards = Array.from(document.querySelectorAll("[data-testid=searchSerpJob]"));
+      return cards.map((card) => {
+        const link = card.querySelector("a[href*=job]") as HTMLAnchorElement;
+        return {
+          title: (card.querySelector("[data-testid=searchSerpJobTitle]") as HTMLElement)?.textContent?.trim() ?? "",
+          company: (card.querySelector("[data-testid=companyName]") as HTMLElement)?.textContent?.trim() ?? "",
+          location: (card.querySelector("[data-testid=searchSerpJobLocation]") as HTMLElement)?.textContent?.trim() ?? "",
+          url: link?.href ?? "",
+          posted: "",
+          source: "SimplyHired",
+        };
+      }).filter((j) => j.title && j.url);
     });
 
-    if (!res.ok) break;
-    const xml = await res.text();
-    const items = xml.match(/<item>([\s\S]*?)<\/item>/g) ?? [];
-    if (items.length === 0) break;
-
-    for (const item of items) {
-      const title = extractCDATA(item, "title");
-      const url   = extract(item, "link") || extractCDATA(item, "guid");
-      const desc  = extractCDATA(item, "description");
-      const date  = extract(item, "pubDate");
-
-      // Indeed title format: "Job Title - Company Name"
-      const dashIdx = title.lastIndexOf(" - ");
-      const jobTitle = dashIdx > 0 ? title.slice(0, dashIdx).trim() : title;
-      const company  = dashIdx > 0 ? title.slice(dashIdx + 3).trim() : "";
-
-      // Location is buried in description HTML — pull it out
-      const locMatch = desc.match(/location.*?<b>(.*?)<\/b>/i) ||
-                       desc.match(/<span[^>]*>([^<]+,\s*[A-Z]{2}[^<]*)<\/span>/);
-      const location_ = locMatch?.[1]?.trim() ?? "";
-
-      if (jobTitle && url) {
-        jobs.push({ title: jobTitle, company, location: location_, url, posted: date, source: "Indeed" });
-      }
-    }
-
-    if (items.length < pageSize) break;
-    start += pageSize;
+    if (batch.length === 0) break;
+    jobs.push(...batch);
+    offset += batch.length;
+    if (batch.length < 15) break;
   }
 
   return jobs.slice(0, limit);
-}
-
-function extractCDATA(xml: string, tag: string): string {
-  const m = xml.match(new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>|([\\s\\S]*?))<\\/${tag}>`));
-  return (m?.[1] ?? m?.[2] ?? "").trim();
-}
-
-function extract(xml: string, tag: string): string {
-  const m = xml.match(new RegExp(`<${tag}[^>]*/?>([\\s\\S]*?)<\\/${tag}>`));
-  return (m?.[1] ?? "").trim();
 }

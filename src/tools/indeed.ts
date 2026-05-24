@@ -1,51 +1,61 @@
 import { Page } from "playwright";
 import type { Job } from "../types.js";
 
-// Indeed is blocked by Cloudflare. SimplyHired is used instead —
-// it's a major US job aggregator with no bot protection.
 export async function scrapeIndeed(
   page: Page,
   role: string,
   location = "United States",
   limit = 100,
-  _hours = 24
+  hours = 24
 ): Promise<Job[]> {
   const jobs: Job[] = [];
-  let offset = 0;
+  let start = 0;
+  const pageSize = 15;
 
   while (jobs.length < limit) {
     const params = new URLSearchParams({
       q: role,
       l: location,
-      sort: "d",
-      pn: String(Math.floor(offset / 20) + 1),
+      sort: "date",
+      fromage: String(Math.max(1, Math.ceil(hours / 24))),
+      start: String(start),
     });
 
-    await page.goto(`https://www.simplyhired.com/search?${params}`, {
+    await page.goto(`https://www.indeed.com/jobs?${params}`, {
       waitUntil: "domcontentloaded",
       timeout: 45000,
     });
     await page.waitForTimeout(3000);
 
+    if ((await page.title()).includes("Security Check") || (await page.title()).includes("Just a moment")) break;
+
     const batch = await page.evaluate(() => {
-      const cards = Array.from(document.querySelectorAll("[data-testid=searchSerpJob]"));
+      const cards = Array.from(document.querySelectorAll(".job_seen_beacon, li.css-5lfssm"));
       return cards.map((card) => {
-        const link = card.querySelector("a[href*=job]") as HTMLAnchorElement;
+        const titleEl = card.querySelector("h2.jobTitle span, [data-testid='jobTitle'] span, h2 span[title]") as HTMLElement;
+        const companyEl = card.querySelector("[data-testid='company-name'], .companyName") as HTMLElement;
+        const locationEl = card.querySelector("[data-testid='text-location'], .companyLocation") as HTMLElement;
+        const dateEl = card.querySelector("[data-testid='myJobsStateDate'], .date") as HTMLElement;
+        const linkEl = card.querySelector("h2.jobTitle a, a[data-jk]") as HTMLAnchorElement;
+
+        const href = linkEl?.getAttribute("href") ?? "";
+        const url = href.startsWith("http") ? href : href ? `https://www.indeed.com${href}` : "";
+
         return {
-          title: (card.querySelector("[data-testid=searchSerpJobTitle]") as HTMLElement)?.textContent?.trim() ?? "",
-          company: (card.querySelector("[data-testid=companyName]") as HTMLElement)?.textContent?.trim() ?? "",
-          location: (card.querySelector("[data-testid=searchSerpJobLocation]") as HTMLElement)?.textContent?.trim() ?? "",
-          url: link?.href ?? "",
-          posted: "",
-          source: "SimplyHired",
+          title: titleEl?.textContent?.trim() ?? "",
+          company: companyEl?.textContent?.trim() ?? "",
+          location: locationEl?.textContent?.trim() ?? "",
+          posted: dateEl?.textContent?.trim() ?? "",
+          url,
+          source: "Indeed",
         };
       }).filter((j) => j.title && j.url);
     });
 
     if (batch.length === 0) break;
     jobs.push(...batch);
-    offset += batch.length;
-    if (batch.length < 15) break;
+    start += pageSize;
+    if (batch.length < pageSize) break;
   }
 
   return jobs.slice(0, limit);

@@ -11,6 +11,7 @@ export async function scrapeIndeed(page: Page, role: string, location = "", limi
     const params = new URLSearchParams({
       q: role,
       fromage: String(Math.max(1, Math.ceil(hours / 24))),
+      sort: "date",           // return all jobs by date, not relevance ranking
       start: String(pageIndex * PAGE_SIZE),
     });
     if (location) params.set("l", location);

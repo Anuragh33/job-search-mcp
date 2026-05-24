@@ -9,6 +9,7 @@ export async function scrapeZipRecruiter(page: Page, role: string, location = ""
     const params = new URLSearchParams({
       search: role,
       days: String(Math.max(1, Math.ceil(hours / 24))),
+      sort_by: "date",        // all jobs by date, not relevance
       page: String(pageNum),
     });
     if (location) params.set("location", location);

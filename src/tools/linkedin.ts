@@ -11,6 +11,7 @@ export async function scrapeLinkedIn(page: Page, role: string, location = "", li
     const params = new URLSearchParams({
       keywords: role,
       f_TPR: `r${hours * 3600}`,
+      sortBy: "DD",           // DD = date descending — all jobs, not just top matches
       start: String(pageIndex * PAGE_SIZE),
     });
     if (location) params.set("location", location);

@@ -9,6 +9,7 @@ export async function scrapeGlassdoor(page: Page, role: string, location = "", l
     const params = new URLSearchParams({
       sc_keyword: role,
       fromAge: String(Math.max(1, Math.ceil(hours / 24))),
+      sort: "date_desc",      // all jobs by date, not relevance
       p: String(pageNum),
     });
     if (location) params.set("locKeyword", location);

@@ -15,6 +15,7 @@ import { scrapeGlassdoor } from "./tools/glassdoor.js";
 import { checkSetup } from "./tools/setup.js";
 import { diagnoseLogins } from "./tools/diagnose.js";
 import { loginSetup } from "./tools/login.js";
+import { exportToCSV } from "./tools/export.js";
 import type { Job } from "./types.js";
 
 function toJSON(jobs: Job[], sources?: Record<string, number | string>): string {
@@ -49,6 +50,22 @@ Run \`check_setup\` at any time to verify your environment is correctly configur
 `.trim();
 
 const TOOLS = [
+  {
+    name: "search_and_export",
+    description:
+      "Search for jobs across all boards and save the results as a CSV file on the Desktop. " +
+      "The file is named jobs_<role>_<today's date>.csv and opens directly in Excel. " +
+      "Use this when the user wants job results saved to a file.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        role: { type: "string", description: "Job title extracted from the resume" },
+        location: { type: "string", description: "Location filter (default: United States)" },
+        hours: { type: "number", description: "Only jobs posted within this many hours (default 24)" },
+      },
+      required: ["role"],
+    },
+  },
   {
     name: "login_setup",
     description:
@@ -209,6 +226,48 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const hours = (args?.hours as number) ?? 24;
 
   try {
+    if (name === "search_and_export") {
+      const context = await launchContext();
+      try {
+        const [p1, p2, p3, p4] = await Promise.all([
+          context.newPage(), context.newPage(),
+          context.newPage(), context.newPage(),
+        ]);
+        const [linkedin, indeed, ziprecruiter, glassdoor] = await Promise.allSettled([
+          scrapeLinkedIn(p1, role, location, limit, hours),
+          scrapeIndeed(p2, role, location, limit, hours),
+          scrapeZipRecruiter(p3, role, location, limit, hours),
+          scrapeGlassdoor(p4, role, location, limit, hours),
+        ]);
+        const allJobs: Job[] = [
+          ...(linkedin.status === "fulfilled" ? linkedin.value : []),
+          ...(indeed.status === "fulfilled" ? indeed.value : []),
+          ...(ziprecruiter.status === "fulfilled" ? ziprecruiter.value : []),
+          ...(glassdoor.status === "fulfilled" ? glassdoor.value : []),
+        ];
+        const filePath = exportToCSV(allJobs, role);
+        const sources = {
+          linkedin: linkedin.status === "fulfilled" ? linkedin.value.length : 0,
+          indeed: indeed.status === "fulfilled" ? indeed.value.length : 0,
+          ziprecruiter: ziprecruiter.status === "fulfilled" ? ziprecruiter.value.length : 0,
+          glassdoor: glassdoor.status === "fulfilled" ? glassdoor.value.length : 0,
+        };
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              total: allJobs.length,
+              sources,
+              file: filePath,
+              message: `Saved ${allJobs.length} jobs to ${filePath}`,
+            }, null, 2),
+          }],
+        };
+      } finally {
+        await context.close();
+      }
+    }
+
     if (name === "login_setup") {
       const report = await loginSetup();
       return { content: [{ type: "text", text: report }] };

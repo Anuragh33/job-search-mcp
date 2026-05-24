@@ -2,16 +2,16 @@ import { chromium } from "playwright";
 import { PROFILE_DIR } from "../browser.js";
 
 const BOARDS = [
-  { name: "LinkedIn",     loginUrl: "https://www.linkedin.com/login",                     checkUrl: "linkedin.com/feed" },
-  { name: "Indeed",       loginUrl: "https://secure.indeed.com/auth",                     checkUrl: "indeed.com" },
-  { name: "ZipRecruiter", loginUrl: "https://www.ziprecruiter.com/login",                 checkUrl: "ziprecruiter.com" },
-  { name: "Glassdoor",    loginUrl: "https://www.glassdoor.com/profile/login_input.htm",  checkUrl: "glassdoor.com/member" },
+  { name: "LinkedIn",  loginUrl: "https://www.linkedin.com/login",                    checkUrl: "linkedin.com/feed" },
+  { name: "Glassdoor", loginUrl: "https://www.glassdoor.com/profile/login_input.htm", checkUrl: "glassdoor.com/member" },
 ];
+// Indeed and ZipRecruiter use public RSS feeds — no login needed
 
 export async function loginSetup(): Promise<string> {
   const lines: string[] = [
     "Opening browser for login setup.",
-    "A browser window will open. Log into each site when prompted, then close the tab.",
+    "A browser window will open. Log into LinkedIn and Glassdoor when prompted.",
+    "Indeed and ZipRecruiter use RSS feeds — no login needed for those.",
     "",
   ];
 

@@ -179,6 +179,10 @@ server.setRequestHandler(ListPromptsRequestSchema, async () => ({
       name: "search-from-resume",
       description: "Search for jobs based on your resume — attach your PDF first",
     },
+    {
+      name: "search-by-role",
+      description: "Search for jobs by typing a role — no file needed",
+    },
   ],
 }));
 
@@ -207,6 +211,21 @@ server.setRequestHandler(GetPromptRequestSchema, async (request) => {
           content: {
             type: "text",
             text: "I have attached my resume PDF. Please read it, identify the role I am best suited for, and then use search_jobs to find matching positions posted in the last 24 hours. Present the results in a clear, readable list grouped by job board.",
+          },
+        },
+      ],
+    };
+  }
+
+  if (request.params.name === "search-by-role") {
+    return {
+      description: "Search jobs by role",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: "What role do you want to search for? Type it and I will run search_and_export to find matching jobs posted in the last 24 hours across LinkedIn, Indeed, ZipRecruiter, and Glassdoor, then save the results to your Desktop as a CSV.",
           },
         },
       ],

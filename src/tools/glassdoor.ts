@@ -1,56 +1,89 @@
-import { Page } from "playwright";
+import { PlaywrightCrawler, Configuration } from "crawlee";
+import { mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import type { Job } from "../types.js";
 
-// Glassdoor blocks all automated access via Cloudflare.
-// Dice.com is used instead — it's a major US tech-focused job board with no bot protection.
 export async function scrapeGlassdoor(
-  page: Page,
   role: string,
-  _location = "United States",
+  location = "United States",
   limit = 100,
-  _hours = 24
+  hours = 24
 ): Promise<Job[]> {
   const jobs: Job[] = [];
-  let pageNum = 1;
+  const storageDir = mkdtempSync(join(tmpdir(), "job-search-gd-"));
+  const config = new Configuration({ storageClientOptions: { localDataDirectory: storageDir } });
 
-  while (jobs.length < limit) {
-    const params = new URLSearchParams({
-      q: role,
-      location: "United States",
-      datePosted: "ONE",
-      page: String(pageNum),
-    });
+  const crawler = new PlaywrightCrawler({
+    headless: true,
+    maxRequestsPerCrawl: 1,
+    requestHandlerTimeoutSecs: 60,
+    async requestHandler({ page }) {
+      for (const sel of [
+        "button[data-test='modal-close-btn']",
+        "#onetrust-accept-btn-handler",
+        "button[class*='CloseButton']",
+        "[aria-label='Close']",
+      ]) {
+        await page.locator(sel).first().click({ timeout: 2000 }).catch(() => null);
+      }
 
-    await page.goto(`https://www.dice.com/jobs?${params}`, {
-      waitUntil: "domcontentloaded",
-      timeout: 45000,
-    });
-    await page.waitForTimeout(3000);
+      await page.waitForSelector(
+        "li[data-jobid], li[data-test='jobListing'], li[class*='JobsList_jobListItem']",
+        { timeout: 20000 }
+      ).catch(() => null);
+      await page.waitForTimeout(2000);
 
-    const batch = await page.evaluate(() => {
-      const cards = Array.from(document.querySelectorAll("[data-testid='job-card']"));
-      return cards.map((card) => {
-        const titleEl = card.querySelector("[data-testid='job-search-job-detail-link']") as HTMLAnchorElement;
-        const paras = Array.from(card.querySelectorAll("p")).map((p) => p.textContent?.trim() ?? "");
-        const company = paras.find((t) => t.length > 2 && !/•|Sponsored|Full-time|Part-time|Contract|Today|ago/.test(t)) ?? "";
-        const location = paras.find((t) => /,\s+[A-Z]|Remote/.test(t)) ?? "";
-        const posted = paras.find((t) => /Today|ago|hour|day|week/.test(t)) ?? "";
+      const batch = await page.evaluate(() => {
+        const selectors = [
+          "li[data-jobid]",
+          "li[data-test='jobListing']",
+          "li[class*='JobsList_jobListItem']",
+          "li[class*='react-job-listing']",
+        ];
+        let cards: Element[] = [];
+        for (const sel of selectors) {
+          cards = Array.from(document.querySelectorAll(sel));
+          if (cards.length > 0) break;
+        }
 
-        return {
-          title: titleEl?.textContent?.trim() ?? "",
-          company,
-          location,
-          url: titleEl?.href ?? "",
-          posted,
-          source: "Dice",
-        };
-      }).filter((j) => j.title && j.url);
-    });
+        return cards.map((card) => {
+          const anchor = card.querySelector(
+            "a[data-test='job-title'], a[class*='JobCard_trackingLink'], a[href*='/job-listing/'], a[href*='/partner/jobListing']"
+          ) as HTMLAnchorElement;
+          const href = anchor?.href ?? "";
+          return {
+            title: (card.querySelector(
+              "[data-test='job-title'], [class*='JobCard_jobTitle'], [class*='jobTitle']"
+            ) as HTMLElement)?.textContent?.trim() ?? anchor?.textContent?.trim() ?? "",
+            company: (card.querySelector(
+              "[data-test='employer-name'], [class*='EmployerProfile_compactEmployerName'], [class*='jobEmpolyerName']"
+            ) as HTMLElement)?.textContent?.trim() ?? "",
+            location: (card.querySelector(
+              "[data-test='emp-location'], [class*='JobCard_location'], [class*='location']"
+            ) as HTMLElement)?.textContent?.trim() ?? "",
+            url: href.startsWith("http") ? href : href ? `https://www.glassdoor.com${href}` : "",
+            posted: (card.querySelector("[data-test='listing-age'], time, [class*='JobCard_listingAge']") as HTMLElement)?.textContent?.trim() ?? "",
+            source: "Glassdoor",
+          };
+        }).filter((j) => j.title && j.url);
+      });
 
-    if (batch.length === 0) break;
-    jobs.push(...batch);
-    pageNum++;
-    if (batch.length < 10) break;
+      jobs.push(...batch);
+    },
+  }, config);
+
+  // Glassdoor search URL — use sc.keyword (dot, not underscore) and locT=N for nationwide
+  const fromAge = Math.max(1, Math.ceil(hours / 24));
+  const searchUrl = `https://www.glassdoor.com/Job/jobs.htm?sc.keyword=${encodeURIComponent(role)}&locT=N&locId=1&fromAge=${fromAge}&sort.sortType=D&sort.ascending=false`;
+
+  try {
+    await crawler.run([{
+      url: searchUrl,
+      userData: {},
+    }]);
+  } finally {
+    rmSync(storageDir, { recursive: true, force: true });
   }
 
   return jobs.slice(0, limit);

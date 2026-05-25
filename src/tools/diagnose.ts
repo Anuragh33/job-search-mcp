@@ -1,36 +1,36 @@
-import { launchContext } from "../browser.js";
+import { PlaywrightCrawler } from "crawlee";
 
 const BOARDS = [
-  { name: "LinkedIn",    url: "https://www.linkedin.com/jobs/",   signal: "linkedin.com" },
-  { name: "SimplyHired", url: "https://www.simplyhired.com/",     signal: "simplyhired.com" },
-  { name: "Dice",        url: "https://www.dice.com/jobs",        signal: "dice.com" },
+  { name: "LinkedIn",     url: "https://www.linkedin.com/jobs/" },
+  { name: "Indeed",       url: "https://www.indeed.com/" },
+  { name: "ZipRecruiter", url: "https://www.ziprecruiter.com/" },
+  { name: "Glassdoor",    url: "https://www.glassdoor.com/" },
 ];
 
 export async function diagnoseLogins(): Promise<string> {
-  const lines: string[] = ["# Connectivity Check\n", "No login is required. Checking that each job board is reachable...\n"];
+  const lines: string[] = ["# Connectivity Check\n", "No login required. Checking each job board is reachable...\n"];
+  const results: Record<string, string> = {};
 
-  const context = await launchContext();
+  const crawler = new PlaywrightCrawler({
+    headless: true,
+    maxRequestsPerCrawl: BOARDS.length,
+    requestHandlerTimeoutSecs: 30,
+    async requestHandler({ page, request }) {
+      await page.waitForTimeout(3000);
+      const title = await page.title();
+      const url = page.url();
+      const blocked = title.toLowerCase().includes("just a moment") || title.toLowerCase().includes("security check") || url.includes("challenge");
+      results[request.userData.name as string] = blocked ? `BLOCKED (${title})` : `OK — ${title.slice(0, 60)}`;
+    },
+    failedRequestHandler({ request }) {
+      results[request.userData.name as string] = `ERROR — request failed`;
+    },
+  });
 
-  try {
-    for (const board of BOARDS) {
-      const page = await context.newPage();
-      try {
-        await page.goto(board.url, { waitUntil: "domcontentloaded", timeout: 20000 });
-        await page.waitForTimeout(2000);
-        const finalUrl = page.url();
-        const ok = finalUrl.includes(board.signal) && !finalUrl.includes("challenge") && !finalUrl.includes("just-a-moment");
-        lines.push(`${board.name}: ${ok ? "OK" : "unreachable — " + finalUrl}`);
-      } catch (err) {
-        lines.push(`${board.name}: Error — ${(err as Error).message}`);
-      } finally {
-        await page.close();
-      }
-    }
+  await crawler.run(BOARDS.map((b) => ({ url: b.url, userData: { name: b.name } })));
 
-    lines.push("");
-    lines.push("Remotive API: always reachable (no browser needed).");
-  } finally {
-    await context.close();
+  for (const board of BOARDS) {
+    lines.push(`${board.name}: ${results[board.name] ?? "no response"}`);
   }
 
   return lines.join("\n");

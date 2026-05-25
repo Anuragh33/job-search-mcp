@@ -1,44 +1,57 @@
-import { Page } from "playwright";
+import { PlaywrightCrawler, Configuration } from "crawlee";
+import { mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import type { Job } from "../types.js";
 
-const PAGE_SIZE = 25;
-
-export async function scrapeLinkedIn(page: Page, role: string, location = "", limit = 25, hours = 24): Promise<Job[]> {
+export async function scrapeLinkedIn(
+  role: string,
+  location = "United States",
+  limit = 100,
+  hours = 24
+): Promise<Job[]> {
   const jobs: Job[] = [];
-  let pageIndex = 0;
+  const storageDir = mkdtempSync(join(tmpdir(), "job-search-li-"));
 
-  while (jobs.length < limit) {
-    const params = new URLSearchParams({
-      keywords: role,
-      f_TPR: `r${hours * 3600}`,
-      sortBy: "DD",
-      start: String(pageIndex * PAGE_SIZE),
-    });
-    params.set("location", location || "United States");
+  const config = new Configuration({ storageClientOptions: { localDataDirectory: storageDir } });
+  const crawler = new PlaywrightCrawler({
+    headless: true,
+    maxRequestsPerCrawl: 1,
+    requestHandlerTimeoutSecs: 60,
+    async requestHandler({ page }) {
+      await page.waitForSelector(".job-search-card", { timeout: 15000 }).catch(() => null);
+      await page.waitForTimeout(2000);
 
-    await page.goto(`https://www.linkedin.com/jobs/search/?${params}`, {
-      waitUntil: "domcontentloaded",
-      timeout: 30000,
-    });
+      const batch = await page.evaluate(() =>
+        Array.from(document.querySelectorAll(".job-search-card")).map((card) => ({
+          title: card.querySelector("h3")?.textContent?.trim() ?? "",
+          company: card.querySelector("h4")?.textContent?.trim() ?? "",
+          location: card.querySelector(".job-search-card__location")?.textContent?.trim() ?? "",
+          url: card.querySelector("a[href*='/jobs/view/']")?.getAttribute("href") ?? "",
+          posted: card.querySelector("time")?.getAttribute("datetime") ?? "",
+          source: "LinkedIn",
+        })).filter((j) => j.title && j.url)
+      );
 
-    await page.waitForSelector(".job-search-card", { timeout: 15000 }).catch(() => null);
-    await page.waitForTimeout(2000);
+      jobs.push(...batch);
+    },
+  }, config);
 
-    const batch = await page.evaluate(() => {
-      return Array.from(document.querySelectorAll(".job-search-card")).map((card) => ({
-        title: card.querySelector("h3")?.textContent?.trim() ?? "",
-        company: card.querySelector("h4")?.textContent?.trim() ?? "",
-        location: card.querySelector(".job-search-card__location")?.textContent?.trim() ?? "",
-        url: card.querySelector("a[href*='/jobs/view/']")?.getAttribute("href") ?? "",
-        posted: card.querySelector("time")?.getAttribute("datetime") ?? "",
-        source: "LinkedIn",
-      })).filter((j) => j.title && j.url);
-    });
+  const params = new URLSearchParams({
+    keywords: role,
+    f_TPR: `r${hours * 3600}`,
+    sortBy: "DD",
+    start: "0",
+  });
+  params.set("location", location);
 
-    if (batch.length === 0) break;
-    jobs.push(...batch);
-    pageIndex++;
-    if (batch.length < PAGE_SIZE) break;
+  try {
+    await crawler.run([{
+      url: `https://www.linkedin.com/jobs/search/?${params}`,
+      userData: {},
+    }]);
+  } finally {
+    rmSync(storageDir, { recursive: true, force: true });
   }
 
   return jobs.slice(0, limit);

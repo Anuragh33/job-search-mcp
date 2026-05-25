@@ -1,35 +1,73 @@
+import { PlaywrightCrawler, Configuration } from "crawlee";
+import { mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import type { Job } from "../types.js";
 
-// ZipRecruiter blocks all automated access via Cloudflare.
-// Remotive provides a free public API for remote jobs with no auth required.
 export async function scrapeZipRecruiter(
-  _page: unknown,
   role: string,
-  _location = "United States",
+  location = "United States",
   limit = 100,
-  _hours = 24
+  hours = 24
 ): Promise<Job[]> {
-  const res = await fetch(
-    `https://remotive.com/api/remote-jobs?search=${encodeURIComponent(role)}&limit=${limit}`,
-    { headers: { "Accept": "application/json" } }
-  );
+  const jobs: Job[] = [];
+  const storageDir = mkdtempSync(join(tmpdir(), "job-search-zr-"));
+  const config = new Configuration({ storageClientOptions: { localDataDirectory: storageDir } });
 
-  if (!res.ok) return [];
+  const crawler = new PlaywrightCrawler({
+    headless: true,
+    maxRequestsPerCrawl: 1,
+    requestHandlerTimeoutSecs: 60,
+    async requestHandler({ page }) {
+      await page.waitForSelector(".job_result_two_pane_v2, [data-testid='job-card']", { timeout: 15000 }).catch(() => null);
+      await page.waitForTimeout(2000);
 
-  const data = await res.json() as { jobs?: Array<{
-    title: string;
-    company_name: string;
-    candidate_required_location: string;
-    url: string;
-    publication_date: string;
-  }> };
+      const batch = await page.evaluate(() => {
+        const cards = Array.from(document.querySelectorAll(".job_result_two_pane_v2"));
+        return cards.map((card) => {
+          const article = card.querySelector("article") ?? card;
+          const links = Array.from(article.querySelectorAll("a")) as HTMLAnchorElement[];
+          const companyLink = links.find((a) => a.href.includes("/co/"));
+          const locationLink = links.find((a) => a.href.includes("jobs-search?location"));
+          const dateEl = article.querySelector("time, [class*='posted'], [data-testid='job-posted']") as HTMLElement;
+          const uuid = companyLink?.href.match(/uuid=([^&]+)/)?.[1] ?? "";
+          const title = (article.querySelector("h2") as HTMLElement)?.textContent?.trim() ?? "";
+          const company = companyLink?.textContent?.trim() ?? "";
+          const loc = locationLink?.textContent?.trim() ?? "";
+          const slug = (s: string) => s.replace(/\s+/g, "-").replace(/[^a-zA-Z0-9-]/g, "");
+          const url = uuid && company && title
+            ? `https://www.ziprecruiter.com/jobs/${slug(company)}/${slug(title)}?jid=${uuid}`
+            : "";
+          return {
+            title,
+            company,
+            location: loc,
+            posted: dateEl?.textContent?.trim() ?? "",
+            url,
+            source: "ZipRecruiter",
+          };
+        }).filter((j) => j.title && j.url);
+      });
 
-  return (data.jobs ?? []).slice(0, limit).map((j) => ({
-    title: j.title,
-    company: j.company_name,
-    location: j.candidate_required_location || "Remote",
-    url: j.url,
-    posted: j.publication_date,
-    source: "Remotive (Remote)",
-  }));
+      jobs.push(...batch);
+    },
+  }, config);
+
+  const params = new URLSearchParams({
+    search: role,
+    location,
+    days: String(Math.max(1, Math.ceil(hours / 24))),
+    page: "1",
+  });
+
+  try {
+    await crawler.run([{
+      url: `https://www.ziprecruiter.com/jobs-search?${params}`,
+      userData: {},
+    }]);
+  } finally {
+    rmSync(storageDir, { recursive: true, force: true });
+  }
+
+  return jobs.slice(0, limit);
 }

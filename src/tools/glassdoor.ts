@@ -18,6 +18,11 @@ export async function scrapeGlassdoor(
     headless: true,
     maxRequestsPerCrawl: 1,
     requestHandlerTimeoutSecs: 60,
+    launchContext: {
+      launchOptions: {
+        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      },
+    },
     async requestHandler({ page }) {
       for (const sel of [
         "button[data-test='modal-close-btn']",

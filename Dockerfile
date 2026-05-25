@@ -38,6 +38,6 @@ COPY tsconfig.json ./
 COPY src/ ./src/
 RUN npm run build
 
-EXPOSE 3001
+EXPOSE 7860
 
 CMD ["node", "dist/server.js"]

@@ -18,6 +18,11 @@ export async function scrapeLinkedIn(
     headless: true,
     maxRequestsPerCrawl: 1,
     requestHandlerTimeoutSecs: 60,
+    launchContext: {
+      launchOptions: {
+        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      },
+    },
     async requestHandler({ page }) {
       await page.waitForSelector(".job-search-card", { timeout: 15000 }).catch(() => null);
       await page.waitForTimeout(2000);

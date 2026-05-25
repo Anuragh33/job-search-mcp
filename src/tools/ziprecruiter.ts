@@ -18,6 +18,11 @@ export async function scrapeZipRecruiter(
     headless: true,
     maxRequestsPerCrawl: 1,
     requestHandlerTimeoutSecs: 60,
+    launchContext: {
+      launchOptions: {
+        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      },
+    },
     async requestHandler({ page }) {
       await page.waitForSelector(".job_result_two_pane_v2, [data-testid='job-card']", { timeout: 15000 }).catch(() => null);
       await page.waitForTimeout(2000);

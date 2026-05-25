@@ -18,6 +18,11 @@ export async function scrapeIndeed(
     headless: true,
     maxRequestsPerCrawl: 1,
     requestHandlerTimeoutSecs: 60,
+    launchContext: {
+      launchOptions: {
+        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      },
+    },
     async requestHandler({ page }) {
       await page.waitForTimeout(3000);
 

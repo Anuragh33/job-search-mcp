@@ -1,3 +1,12 @@
+---
+title: Job Search MCP
+emoji: 🔍
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+---
+
 # job-search-mcp
 
 MCP server that scrapes job listings from LinkedIn, Indeed, ZipRecruiter, and Glassdoor using your local Chrome session. Attach your resume PDF to Claude, and it will extract your target role and search across all boards in parallel.
